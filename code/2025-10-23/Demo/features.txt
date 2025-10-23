@@ -1,0 +1,30 @@
+FACE_LANDMARKS_FACE_OVAL
+outline contour of the face
+
+FACE_LANDMARKS_LIPS
+both upper & lower lip edge network
+
+FACE_LANDMARKS_LEFT_EYE
+all edges forming the left eye socket and lids
+
+FACE_LANDMARKS_LEFT_EYEBROW
+left eyebrow curve
+
+FACE_LANDMARKS_LEFT_IRIS
+small ring around the left iris
+
+FACE_LANDMARKS_RIGHT_EYE
+all edges forming the right eye socket and lids
+
+FACE_LANDMARKS_RIGHT_EYEBROW
+right eyebrow curve
+
+FACE_LANDMARKS_RIGHT_IRIS
+small ring around the right iris
+
+FACE_LANDMARKS_CONTOURS
+full set of facial contour connectors
+(used internally for mesh construction)
+
+FACE_LANDMARKS_TESSELATION
+the complete 3D triangulation mesh (478-vertex face mesh)
