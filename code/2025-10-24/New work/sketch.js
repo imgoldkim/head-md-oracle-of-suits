@@ -34,6 +34,9 @@ let lastFistToggleTime = 0;
 let prevLeftFist = false;
 let leftHihatOn = false;
 let lastLeftFistToggleTime = 0;
+// right-hand pinky+ring toggle state (new hihat mapping)
+let prevRightPinkyRing = false;
+let lastRightPinkyRingToggleTime = 0;
 // left-pinky LP toggle state
 let prevLeftPinky = false;
 let lpOn = false;
@@ -46,6 +49,10 @@ let lastLeftPeachToggleTime = 0;
 let prevOpenPalm = false;
 let allOn = false;
 let lastOpenToggleTime = 0;
+
+// require holding an open palm for a short time before triggering master stop
+let openPalmStart = 0;
+const OPEN_PALM_HOLD = 500; // ms hold required to trigger master STOP
 
 const TOGGLE_COOLDOWN = 400; // ms to debounce toggles
 
@@ -174,6 +181,8 @@ function draw() {
 
   // detect if any hand is "index up" (index extended and middle/ring/pinky NOT extended)
   let anyIndexOnly = false;
+  // detect if right-hand has pinky+ring extended together (new hihat mapping)
+  let anyRightPinkyRing = false;
   // detect if any hand has two fingers up (index + middle, ring not)
   let anyTwoUp = false;
   // detect if any hand has peach/peace sign (thumb + index + middle, ring and pinky not)
@@ -224,33 +233,27 @@ function draw() {
   // detect left-hand peach/peace: thumb + index + middle, ring and pinky not extended
   if (thumbExtendedL && indexExtendedL && middleExtendedL && !ringExtendedL && !pinkyExtendedL) anyLeftPeach = true;
 
-        // LEFT pinky: rising-edge toggle LP on/off and while extended control LP frequency (log scale)
+        // LEFT pinky: rising-edge toggle GROUP (hihat + kick + snare) on/off
         if (ptL) {
-          const py = ptL.y * HL;
           const nowLP = millis();
           if (pinkyExtendedL && !prevLeftPinky && (nowLP - lastLeftPinkyToggleTime) > TOGGLE_COOLDOWN) {
-            lpOn = !lpOn;
+            // toggle group play: hihat, kick, snare together
+            const groupOn = !(kickOn || hihatOn || snareOn);
             lastLeftPinkyToggleTime = nowLP;
-            console.log('left pinky -> lpOn =', lpOn);
-            if (!lpOn && lpFilter) {
-              lpFilter.freq(LP_MAX_FREQ);
+            console.log('left pinky -> group toggle, turning groupOn =', groupOn);
+            if (groupOn) {
+              // start all three
+              if (hihatSound && typeof hihatSound.loop === 'function') { hihatSound.loop(); hihatOn = true; }
+              if (kickSound && typeof kickSound.loop === 'function') { kickSound.loop(); kickOn = true; }
+              if (snareSound && typeof snareSound.loop === 'function') { snareSound.loop(); snareOn = true; }
+            } else {
+              // stop all three
+              if (hihatSound && typeof hihatSound.stop === 'function') { hihatSound.stop(); hihatOn = false; }
+              if (kickSound && typeof kickSound.stop === 'function') { kickSound.stop(); kickOn = false; }
+              if (snareSound && typeof snareSound.stop === 'function') { snareSound.stop(); snareOn = false; }
             }
           }
-          // while pinky is extended, map vertical position to LP freq (logarithmic mapping)
-          if (typeof slider2Y !== 'undefined' && pinkyExtendedL) {
-            slider2Active = true;
-            slider2Val = constrain(map(py, slider2Y + slider2H, slider2Y, 0, 1), 0, 1);
-            // logarithmic mapping
-            const minLog = Math.log(LP_MIN_FREQ);
-            const maxLog = Math.log(LP_MAX_FREQ);
-            const freq2 = Math.exp(minLog + slider2Val * (maxLog - minLog));
-            if (lpFilter) {
-              if (lpOn) lpFilter.freq(freq2);
-              else lpFilter.freq(LP_MAX_FREQ);
-            }
-          } else {
-            slider2Active = false;
-          }
+          // no continuous slider behavior for this gesture
           prevLeftPinky = pinkyExtendedL;
         }
 
@@ -335,6 +338,11 @@ function draw() {
       drawConnections(hand);
   drawLandmarks(hand);
   drawHandBox(hand, h);
+
+      // right-hand specific: detect pinky+ring together (and index/middle not extended)
+      if (ringExtended && pinkyExtended && !indexExtended && !middleExtended) {
+        anyRightPinkyRing = true;
+      }
     } // end of hands loop
 
     // --- audio toggle on rising edge: play on first index-up, stop on next index-up ---
@@ -374,17 +382,18 @@ function draw() {
       // optional debug: console.log('peach detected (right hand) - no audio action');
     }
     prevPeach = anyPeach;
-    // --- audio toggle for LEFT-fist (hihat) on rising edge ---
+    // --- audio toggle for right-hand pinky+ring (hihat) on rising edge ---
     if (typeof hihatSound !== 'undefined' && hihatSound && typeof hihatSound.isLoaded === 'function' && hihatSound.isLoaded()) {
-      const nowLF = millis();
-      if (anyLeftFist && !prevLeftFist && (nowLF - lastLeftFistToggleTime) > TOGGLE_COOLDOWN) {
-        leftHihatOn = !leftHihatOn;
-        lastLeftFistToggleTime = nowLF;
-        console.log('left fist -> leftHihatOn =', leftHihatOn);
-        if (leftHihatOn) hihatSound.loop(); else hihatSound.stop();
+      const nowHR = millis();
+      if (anyRightPinkyRing && !prevRightPinkyRing && (nowHR - lastRightPinkyRingToggleTime) > TOGGLE_COOLDOWN) {
+        // toggle canonical hihat state used elsewhere (e.g., left-pinky group toggle relies on hihatOn)
+        hihatOn = !hihatOn;
+        lastRightPinkyRingToggleTime = nowHR;
+  console.log('right pinky -> hihatOn =', hihatOn);
+        if (hihatOn) hihatSound.loop(); else hihatSound.stop();
       }
     }
-    prevLeftFist = anyLeftFist;
+    prevRightPinkyRing = anyRightPinkyRing;
     // --- audio toggle for LEFT-peach (effect) on rising edge ---
     if (typeof effectSound !== 'undefined' && effectSound && typeof effectSound.isLoaded === 'function' && effectSound.isLoaded()) {
       const nowLPeach = millis();
@@ -651,22 +660,6 @@ function drawHandBox(landmarks, handIndex = 0) {
   // restore defaults used elsewhere
   strokeWeight(2);
   stroke(255, 255, 0);
-}
-
-// draw a small HUD showing the hand-down thresholds and instructions
-function drawThresholdHUD() {
-  push();
-  const x = 12, y = 12;
-  noStroke();
-  fill(0, 0, 0, 160);
-  rect(8, 8, 240, 72, 6);
-  fill(255);
-  textSize(12);
-  textAlign(LEFT, TOP);
-  text('HAND DOWN RATIO: ' + nf(HAND_DOWN_RATIO, 1, 2), x, y);
-  text('HAND UP RATIO:   ' + nf(HAND_UP_RATIO, 1, 2), x, y + 18);
-  text("Adjust: [ / ] for DOWN, ; / ' for UP", x, y + 38);
-  pop();
 }
 
 function keyPressed() {
